@@ -38,3 +38,54 @@ function record_subscription_start_date($order_id) {
         }
     }
 }
+
+// Function to check user balance and trigger an automatic refill if below threshold.
+function check_user_balance_and_refill() {
+    if (!is_user_logged_in()) {
+        return;
+    }
+
+    $user_id = get_current_user_id();
+    $current_balance = get_user_meta($user_id, 'user_balance', true);
+    $threshold = 150; // Threshold below which we trigger a refill
+    $refill_amount = 500; // Amount to refill automatically
+
+    // If balance is below threshold, trigger refill
+    if ($current_balance < $threshold) {
+        // Update the balance by adding refill amount
+        $new_balance = $current_balance + $refill_amount;
+        update_user_meta($user_id, 'user_balance', $new_balance);
+
+        // Record the refill in the user's balance history
+        $balance_history = get_user_meta($user_id, 'balance_history', true);
+        if (!$balance_history) {
+            $balance_history = [];
+        }
+
+        $balance_history[] = [
+            'type' => 'refill',
+            'amount' => $refill_amount,
+            'date' => current_time('Y-m-d H:i:s'),
+            'description' => 'Automatic refill triggered due to low balance.'
+        ];
+
+        update_user_meta($user_id, 'balance_history', $balance_history);
+    }
+}
+
+// Function to pause subscription based on balance.
+function maybe_pause_subscription($user_id) {
+    $current_balance = get_user_meta($user_id, 'user_balance', true);
+    $threshold = 150; // Threshold below which renewal is postponed
+
+    if ($current_balance > $threshold) {
+        // Logic to pause the subscription if the user has sufficient balance
+        $subscriptions = wcs_get_users_subscriptions($user_id);
+
+        foreach ($subscriptions as $subscription) {
+            if ($subscription->has_status('active')) {
+                $subscription->update_status('on-hold', 'Balance sufficient, postponing renewal');
+            }
+        }
+    }
+}
