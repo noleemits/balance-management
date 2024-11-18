@@ -5,6 +5,25 @@ require_once get_stylesheet_directory() . '/balance-management/balance-hooks.php
 require_once get_stylesheet_directory() . '/balance-management/balance-functions.php';
 require_once get_stylesheet_directory() . '/balance-management/subscription-management.php';
 require_once get_stylesheet_directory() . '/balance-management/weekly-cycle-check.php';
+require_once get_stylesheet_directory() . '/balance-management/display-user-shortcode.php';
+
+// Enqueue the JavaScript for the shortcode
+function enqueue_display_user_script() {
+    wp_enqueue_script(
+        'display-user-script',
+        get_stylesheet_directory_uri() . '/balance-management/js/display-user.js',
+        array('jquery'),
+        null,
+        true
+    );
+
+    wp_localize_script(
+        'display-user-script',
+        'ajax_object',
+        array('ajaxurl' => admin_url('admin-ajax.php'))
+    );
+}
+add_action('wp_enqueue_scripts', 'enqueue_display_user_script');
 
 // Create a function that initializes all the core elements.
 function initialize_balance_management_system() {
@@ -46,7 +65,7 @@ function check_user_balance_and_refill() {
     }
 
     $user_id = get_current_user_id();
-    $current_balance = get_user_meta($user_id, 'user_balance', true);
+    $current_balance = (float) get_user_meta($user_id, 'user_balance', true);
     $threshold = 150; // Threshold below which we trigger a refill
     $refill_amount = 500; // Amount to refill automatically
 
@@ -64,7 +83,7 @@ function check_user_balance_and_refill() {
 
         $balance_history[] = [
             'type' => 'refill',
-            'amount' => $refill_amount,
+            'amount' => '+' . $refill_amount,
             'date' => current_time('Y-m-d H:i:s'),
             'description' => 'Automatic refill triggered due to low balance.'
         ];
@@ -75,7 +94,7 @@ function check_user_balance_and_refill() {
 
 // Function to pause subscription based on balance.
 function maybe_pause_subscription($user_id) {
-    $current_balance = get_user_meta($user_id, 'user_balance', true);
+    $current_balance = (float) get_user_meta($user_id, 'user_balance', true);
     $threshold = 150; // Threshold below which renewal is postponed
 
     if ($current_balance > $threshold) {
