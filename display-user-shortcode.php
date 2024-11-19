@@ -26,9 +26,8 @@ function get_weekly_spent_amount_by_provider($provider_id) {
 }
 
 
-// Shortcode to display the provider information container
+// Shortcode to display the provider information (for reps when placing an appointment)
 function provider_info_shortcode() {
-    // Output a container where the user information will be displayed
     ob_start();
 ?>
     <div id="provider-info-container">
@@ -62,50 +61,32 @@ function get_provider_info() {
         $related_user_id = $related_user ? $related_user->ID : false;
 
         if ($related_user_id) {
-            // Get basic user information
-            $user_name = get_the_author_meta('display_name', $related_user_id);
-            $user_email = get_the_author_meta('user_email', $related_user_id);
-
-            // Get JetEngine fields
-            $profile_image = get_user_meta($related_user_id, 'profile_image', true);
-            $weekly_budget = get_user_meta($related_user_id, 'weekly_budget', true);
-            $service_areas = get_user_meta($related_user_id, 'service-areas', true);
-
-            // Get current balance
-            $current_balance = (float) get_user_meta($related_user_id, 'user_balance', true);
-
-            // Calculate the current spent budget for the week
-            $current_spent_budget = get_weekly_spent_amount_by_provider($provider_id);
+            // Use provider data function to get information
+            $provider_data = get_provider_data($related_user_id);
+            $next_cycle_date = get_next_cycle_date($related_user_id);
 
             // Start output
-            $output = "<strong>Name:</strong> " . esc_html($user_name) . "<br>";
-            $output .= "<strong>Email:</strong> " . esc_html($user_email) . "<br>";
+            $output = "<strong>Name:</strong> " . esc_html($provider_data['user_name']) . "<br>";
+            $output .= "<strong>Email:</strong> " . esc_html($provider_data['user_email']) . "<br>";
 
             // Profile image (if exists)
-            if (!empty($profile_image)) {
-                $output .= "<strong>Profile Image:</strong><br><img src='" . esc_url($profile_image) . "' alt='Profile Image' style='max-width:150px; height:auto;'><br>";
-            }
-
-            // Weekly budget
-            if (!empty($weekly_budget)) {
-                $output .= "<strong>Weekly Budget:</strong> $" . esc_html($weekly_budget) . "<br>";
+            if (!empty($provider_data['profile_image'])) {
+                $output .= "<strong>Profile Image:</strong><br><img src='" . esc_url($provider_data['profile_image']) . "' alt='Profile Image' style='max-width:150px; height:auto;'><br>";
             }
 
             // Current Spent Budget for the Week
-            $output .= "<strong>Current Spent Budget (This Week):</strong> $" . number_format($current_spent_budget, 2) . "<br>";
+            $output .= "<strong>Current Spent Budget (This Week):</strong> $" . number_format($provider_data['current_spent_budget'], 2) . "<br>";
 
             // Current Balance
-            $output .= "<strong>Current Balance:</strong> $" . number_format($current_balance, 2) . "<br>";
+            $output .= "<strong>Current Balance:</strong> $<span id='user_balance'>" . number_format($provider_data['current_balance'], 2) . "</span><br>";
 
-            // Service Areas (if exists)
-            if (!empty($service_areas) && is_array($service_areas)) {
-                $output .= "<strong>Service Areas:</strong><br>";
-                foreach ($service_areas as $area) {
-                    $output .= "- " . esc_html($area['service-area']) . "<br>";
-                }
-            } else {
-                $output .= "No service areas found<br>";
-            }
+            // Next Billing Cycle Date
+            $output .= "<strong>Next Billing Cycle:</strong> " . esc_html($next_cycle_date) . "<br>";
+
+            // Warning message if the balance is insufficient for the price entered
+            $output .= "<div id='balance-warning-message' style='display: none;'>
+                        <p class='warning-text'>Warning: The user's balance is insufficient for the requested appointment price.</p>
+                        </div>";
 
             echo $output;
         } else {
@@ -115,7 +96,7 @@ function get_provider_info() {
         echo 'Invalid request. Provider ID is missing.';
     }
 
-    wp_die(); // this is required to terminate immediately and return a proper response
+    wp_die();
 }
 
 add_action('wp_ajax_get_provider_info', 'get_provider_info');

@@ -1,28 +1,67 @@
 <?php
 
-// Add custom user balance meta field to user profile in admin.
-function display_user_balance_field($user) {
-    // Retrieve the user balance from user meta.
-    $user_balance = get_user_meta($user->ID, 'user_balance', true);
-?>
-    <h3>User Balance Information</h3>
-    <table class="form-table">
-        <tr>
-            <th><label for="user_balance">User Balance ($)</label></th>
-            <td>
-                <input type="text" name="user_balance" id="user_balance" value="<?php echo esc_attr($user_balance); ?>" class="regular-text" />
-                <p class="description">Current balance available for the user.</p>
-            </td>
-        </tr>
-    </table>
-<?php
-}
-add_action('show_user_profile', 'display_user_balance_field');
-add_action('edit_user_profile', 'display_user_balance_field');
+// Function to retrieve provider-related user data
+function get_provider_data($related_user_id) {
+    // Get basic user information
+    $user_name = get_the_author_meta('display_name', $related_user_id);
+    $user_email = get_the_author_meta('user_email', $related_user_id);
 
-// Shortcode to display the user's balance and history
-function display_user_balance_shortcode($atts) {
-    // Extract user ID from shortcode attributes
+    // Get JetEngine fields (Remove any fields that are not needed)
+    $profile_image = get_user_meta($related_user_id, 'profile_image', true);
+    $service_areas = get_user_meta($related_user_id, 'service-areas', true);
+
+    // Get current balance
+    $current_balance = (float) get_user_meta($related_user_id, 'user_balance', true);
+
+    // Calculate the current spent budget for the week
+    $provider_id = $related_user_id; // Assuming the provider_id is the user ID.
+    $current_spent_budget = get_weekly_spent_amount_by_provider($provider_id);
+
+    return [
+        'user_name' => $user_name,
+        'user_email' => $user_email,
+        'profile_image' => $profile_image,
+        'service_areas' => $service_areas,
+        'current_balance' => $current_balance,
+        'current_spent_budget' => $current_spent_budget
+    ];
+}
+
+// Function to get next renewal date based on subscription start date and renewal interval (weekly).
+function get_next_cycle_date($user_id) {
+    $subscription_start_date = get_user_meta($user_id, 'subscription_start_date', true);
+    if (!$subscription_start_date) {
+        return 'No subscription start date found';
+    }
+
+    // Assuming weekly subscription cycle (7 days).
+    $start_timestamp = strtotime($subscription_start_date);
+    $next_cycle_timestamp = strtotime('+1 week', $start_timestamp);
+
+    // Format the next cycle date.
+    return date('m/d/Y h:i A', $next_cycle_timestamp);
+}
+
+// Helper function to update the user's balance history
+function update_balance_history($user_id, $type, $amount, $description) {
+    $balance_history = get_user_meta($user_id, 'balance_history', true);
+    if (!$balance_history) {
+        $balance_history = [];
+    }
+
+    $balance_history_entry = [
+        'type' => $type,
+        'amount' => ($type === 'deduct' ? '-' : '+') . abs($amount),
+        'date' => date('m/d/Y h:i A', strtotime(current_time('mysql'))),
+        'description' => $description
+    ];
+
+    array_unshift($balance_history, $balance_history_entry);
+    update_user_meta($user_id, 'balance_history', $balance_history);
+}
+
+// Shortcode to display the user's balance information
+function user_balance_shortcode($atts) {
     $atts = shortcode_atts(array(
         'user_id' => get_current_user_id(), // Defaults to the current logged-in user
     ), $atts);
@@ -33,29 +72,22 @@ function display_user_balance_shortcode($atts) {
         return 'You need to be logged in to see your balance or provide a valid user ID.';
     }
 
-    // Get the current balance and balance history
-    $current_balance = get_user_meta($user_id, 'user_balance', true);
-
-    // Ensure balance is a float, and if not set, default it to zero
-    if (empty($current_balance)) {
-        $current_balance = 0.0;
-    } else {
-        $current_balance = (float) $current_balance;
-    }
-
-    $balance_history = get_user_meta($user_id, 'balance_history', true);
+    $provider_data = get_provider_data($user_id);
 
     ob_start(); // Start output buffering
 ?>
     <div class="user-balance-info">
-        <h3>Current Balance: $<?php echo number_format($current_balance, 2); ?></h3>
+        <h3>Current Balance: <span id="user_balance"><?php echo number_format($provider_data['current_balance'], 2); ?></span></h3>
+        <h4>Next Refill Date: <span id="next_cycle_date"><?php echo esc_html(get_next_cycle_date($user_id)); ?></span></h4>
         <h4>Balance History:</h4>
         <ul>
-            <?php if (!empty($balance_history)) : ?>
+            <?php
+            $balance_history = get_user_meta($user_id, 'balance_history', true);
+            if (!empty($balance_history)) : ?>
                 <?php foreach ($balance_history as $entry) : ?>
                     <li>
                         <?php echo esc_html($entry['date']); ?> -
-                        <?php echo ucfirst(esc_html($entry['type'])); ?>: $<?php echo number_format((float) $entry['amount'], 2); ?> -
+                        <?php echo ucfirst(esc_html($entry['type'])); ?>: $<?php echo number_format($entry['amount'], 2); ?> -
                         <?php echo esc_html($entry['description']); ?>
                     </li>
                 <?php endforeach; ?>
@@ -68,8 +100,7 @@ function display_user_balance_shortcode($atts) {
 
     return ob_get_clean(); // Return output buffer content
 }
-
-add_shortcode('user_balance', 'display_user_balance_shortcode');
+add_shortcode('user_balance', 'user_balance_shortcode');
 
 // Save the updated user balance from the user profile page and record history.
 function save_user_balance_field($user_id) {
@@ -85,20 +116,8 @@ function save_user_balance_field($user_id) {
         update_user_meta($user_id, 'user_balance', $new_balance);
 
         // Record balance adjustment in history
-        $balance_history = get_user_meta($user_id, 'balance_history', true);
-        if (!$balance_history) {
-            $balance_history = [];
-        }
-
-        $balance_history_entry = [
-            'type' => 'adjustment',
-            'amount' => ($new_balance > $old_balance ? '+' : '-') . abs($new_balance - $old_balance),
-            'date' => date('m/d/Y h:i A', strtotime(current_time('mysql'))),
-            'description' => 'Credit adjusted by Admin.'
-        ];
-
-        array_unshift($balance_history, $balance_history_entry);
-        update_user_meta($user_id, 'balance_history', $balance_history);
+        $adjustment_amount = $new_balance - $old_balance;
+        update_balance_history($user_id, 'adjustment', $adjustment_amount, 'Credit adjusted by Admin.');
     }
 }
 add_action('personal_options_update', 'save_user_balance_field');
@@ -110,101 +129,50 @@ function update_user_balance_on_order_completion($order_id) {
     $user_id = $order->get_user_id();
 
     if ($user_id) {
-        // Get current balance and make sure it's treated as a float, defaulting to 0 if not set.
         $current_balance = (float) get_user_meta($user_id, 'user_balance', true);
-        $order_total = (float) $order->get_total(); // Cast order total to float to prevent issues.
+        $order_total = (float) $order->get_total();
 
-        // Add the order amount to the user's current balance.
         $new_balance = $current_balance + $order_total;
         update_user_meta($user_id, 'user_balance', $new_balance);
 
-        // Update balance history
-        $balance_history = get_user_meta($user_id, 'balance_history', true);
-        if (!$balance_history) {
-            $balance_history = [];
-        }
-
-        // Add the new history entry.
-        $balance_history_entry = [
-            'type' => 'add', // could also be 'deduct', 'refill', etc.
-            'amount' => '+' . $order_total,
-            'date' => date('m/d/Y h:i A', strtotime(current_time('mysql'))),
-            'description' => 'Order completed. Added balance.'
-        ];
-
-        array_unshift($balance_history, $balance_history_entry);
-        update_user_meta($user_id, 'balance_history', $balance_history);
+        // Record the addition in history
+        update_balance_history($user_id, 'add', $order_total, 'Order completed. Added balance.');
     }
 }
 
-// Deduct balance when appointment form is submitted by the rep
-function deduct_user_balance_on_appointment_submission($user_id, $appointment_cost) {
-    // Get the current balance and cast it to a float
-    $current_balance = (float) get_user_meta($user_id, 'user_balance', true);
+// Deduct balance on appointment submission using JetFormBuilder hook
+add_action('jet-form-builder/custom-action/deduct_balance_after_appointment', 'deduct_balance_after_appointment_handler', 10, 3);
 
-    // Check if the balance is sufficient
-    if ($current_balance >= $appointment_cost) {
-        // Deduct the appointment cost from the user's balance
-        $new_balance = $current_balance - $appointment_cost;
-        update_user_meta($user_id, 'user_balance', $new_balance);
+function deduct_balance_after_appointment_handler($request, $action_handler) {
+    $provider_id = !empty($request['provider_id']) ? intval($request['provider_id']) : 0;
+    $appointment_cost = !empty($request['price']) ? floatval($request['price']) : 0;
 
-        // Update balance history
-        $balance_history = get_user_meta($user_id, 'balance_history', true);
-        if (!$balance_history) {
-            $balance_history = [];
-        }
-
-        // Add a new history entry
-        $balance_history_entry = [
-            'type' => 'deduct',
-            'amount' => '-' . number_format($appointment_cost, 2),
-            'date' => date('m/d/Y h:i A', strtotime(current_time('mysql'))),
-            'description' => 'Appointment cost deducted by Rep.'
-        ];
-
-        array_unshift($balance_history, $balance_history_entry);
-        update_user_meta($user_id, 'balance_history', $balance_history);
-
-        return true; // Success
-    } else {
-        return false; // Insufficient balance
-    }
-}
-
-
-// AJAX handler to deduct balance on appointment submission by a rep
-function deduct_user_balance_for_appointment() {
-    if (isset($_POST['provider_id']) && isset($_POST['appointment_cost'])) {
-        $provider_id = intval($_POST['provider_id']);
-        $appointment_cost = floatval($_POST['appointment_cost']);
-
-        // Query the email address related to the provider ID using the 'select_user' meta key
+    if ($provider_id) {
         $related_user_email = get_post_meta($provider_id, 'select_user', true);
 
         if ($related_user_email) {
-            // Retrieve the user ID using the email address
             $related_user = get_user_by('email', $related_user_email);
-            $related_user_id = $related_user ? $related_user->ID : false;
-
-            if ($related_user_id) {
-                $deduction_result = deduct_user_balance_on_appointment_submission($related_user_id, $appointment_cost);
-
-                if ($deduction_result) {
-                    wp_send_json_success(['message' => 'Balance deducted successfully']);
-                } else {
-                    wp_send_json_error(['message' => 'Insufficient balance']);
-                }
-            } else {
-                wp_send_json_error(['message' => 'User not found']);
-            }
+            $related_user_id = $related_user ? $related_user->ID : 0;
         } else {
-            wp_send_json_error(['message' => 'Provider email not found']);
+            throw new Exception('Invalid appointment provider data.');
         }
     } else {
-        wp_send_json_error(['message' => 'Invalid data provided']);
+        $related_user_id = 0;
     }
 
-    wp_die();
+    if ($related_user_id && $appointment_cost > 0) {
+        $current_balance = (float) get_user_meta($related_user_id, 'user_balance', true);
+
+        if ($current_balance >= $appointment_cost) {
+            $new_balance = $current_balance - $appointment_cost;
+            update_user_meta($related_user_id, 'user_balance', $new_balance);
+
+            // Record in balance history
+            update_balance_history($related_user_id, 'deduct', $appointment_cost, 'Appointment cost deducted upon submission.');
+        } else {
+            throw new Exception('Insufficient balance to complete this appointment.');
+        }
+    } else {
+        throw new Exception('Invalid appointment cost or user data.');
+    }
 }
-add_action('wp_ajax_deduct_user_balance_for_appointment', 'deduct_user_balance_for_appointment');
-add_action('wp_ajax_nopriv_deduct_user_balance_for_appointment', 'deduct_user_balance_for_appointment');
