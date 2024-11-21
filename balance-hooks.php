@@ -108,8 +108,7 @@ function user_balance_shortcode($atts) {
         <ul>
             <?php if (is_array($provider_data['subscription_details'])) : ?>
                 <li>Status: <?php echo esc_html($provider_data['subscription_details']['status']); ?></li>
-                <li>Plan Type: <?php echo esc_html($provider_data['subscription_details']['plan_type']); ?></li>
-                <li>Product: <?php echo esc_html($provider_data['subscription_details']['product']); ?></li>
+                <li>Product: <?php echo esc_html(preg_replace('/\s*\(\#\d+\)$/', '', strip_tags($provider_data['subscription_details']['product']))); ?></li>
             <?php else : ?>
                 <li><?php echo esc_html($provider_data['subscription_details']); ?></li>
             <?php endif; ?>
