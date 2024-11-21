@@ -38,7 +38,7 @@ function provider_info_shortcode() {
 }
 add_shortcode('provider_info', 'provider_info_shortcode');
 
-// AJAX handler to get provider information (extended to include balance and appointment cost input)
+// AJAX handler to get provider information (extended to include balance, subscription details, and appointment cost input)
 function get_provider_info() {
     if (isset($_POST['provider_id'])) {
         $provider_id = sanitize_text_field($_POST['provider_id']);
@@ -74,14 +74,19 @@ function get_provider_info() {
                 $output .= "<strong>Profile Image:</strong><br><img src='" . esc_url($provider_data['profile_image']) . "' alt='Profile Image' style='max-width:150px; height:auto;'><br>";
             }
 
-            // Current Spent Budget for the Week
-            $output .= "<strong>Current Spent Budget (This Week):</strong> $" . number_format($provider_data['current_spent_budget'], 2) . "<br>";
-
             // Current Balance
             $output .= "<strong>Current Balance:</strong> $<span id='user_balance'>" . number_format($provider_data['current_balance'], 2) . "</span><br>";
 
             // Next Billing Cycle Date
             $output .= "<strong>Next Billing Cycle:</strong> " . esc_html($next_cycle_date) . "<br>";
+
+            // Subscription Details
+            if (is_array($provider_data['subscription_details'])) {
+                $output .= "<strong>Subscription Status:</strong> " . esc_html($provider_data['subscription_details']['status']) . "<br>";
+                $output .= "<strong>Subscription Product:</strong> " . esc_html(preg_replace('/\s*\(\#\d+\)$/', '', strip_tags($provider_data['subscription_details']['product']))) . "<br>";
+            } else {
+                $output .= "<strong>Subscription:</strong> " . esc_html($provider_data['subscription_details']) . "<br>";
+            }
 
             // Warning message if the balance is insufficient for the price entered
             $output .= "<div id='balance-warning-message' style='display: none;'>

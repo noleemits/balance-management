@@ -1,7 +1,6 @@
 <?php
 
 // Function to retrieve provider-related user data
-// Function to retrieve provider-related user data
 function get_provider_data($related_user_id) {
     // Get basic user information
     $user_name = get_the_author_meta('display_name', $related_user_id);
@@ -17,7 +16,6 @@ function get_provider_data($related_user_id) {
     // Calculate the current spent budget for the week
     $provider_id = $related_user_id; // Assuming the provider_id is the user ID.
     $current_spent_budget = get_weekly_spent_amount_by_provider($provider_id);
-
     // Retrieve subscription details
     $subscription_details = get_user_subscription_details($related_user_id);
 
@@ -39,16 +37,13 @@ function get_user_subscription_details($user_id) {
 
     if ($subscription) {
         return [
-            'status' => get_post_meta($subscription->get_id(), 'sumo_get_status', true), // Correctly getting the status from metadata
-            'plan_type' => get_post_meta($subscription->get_id(), 'sumo_plan_type', true),
-            'subscription_id' => $subscription->get_id(),
-            'product' => sumo_display_subscription_name($subscription->get_id(), false, true)
+            'status' => $subscription->get_status(),
+            'plan_type' => get_post_meta($subscription->get_id(), 'sumo_plan_type', true)
         ];
     }
 
     return 'No active subscription';
 }
-
 
 // Function to get next renewal date based on subscription start date and renewal interval (weekly).
 function get_next_cycle_date($user_id) {
@@ -109,7 +104,6 @@ function user_balance_shortcode($atts) {
             <?php if (is_array($provider_data['subscription_details'])) : ?>
                 <li>Status: <?php echo esc_html($provider_data['subscription_details']['status']); ?></li>
                 <li>Plan Type: <?php echo esc_html($provider_data['subscription_details']['plan_type']); ?></li>
-                <li>Product: <?php echo esc_html($provider_data['subscription_details']['product']); ?></li>
             <?php else : ?>
                 <li><?php echo esc_html($provider_data['subscription_details']); ?></li>
             <?php endif; ?>
@@ -207,51 +201,6 @@ function update_user_balance_on_order_completion($order_id) {
         update_balance_history($user_id, 'add', $order_total, 'Order completed. Added balance.');
     }
 }
-add_action('woocommerce_order_status_completed', 'update_user_balance_on_order_completion');
-
-// Hook to listen for changes in user meta 'appointment_paused' and pause/resume subscription accordingly
-add_action('updated_user_meta', 'check_and_pause_sumo_subscription', 10, 4);
-
-function check_and_pause_sumo_subscription($meta_id, $user_id, $meta_key, $meta_value) {
-    if ($meta_key === 'appointment_paused') {
-        error_log("Meta updated for user {$user_id}, meta_key: {$meta_key}, meta_value: {$meta_value}");
-
-        // Get the SUMO subscription for the user
-        $subscription = sumosubs_get_user_subscriptions($user_id);
-
-        if ($subscription) {
-            // Get the current status from metadata
-            $subscription_status = get_post_meta($subscription->get_id(), 'sumo_get_status', true);
-
-            if ($meta_value === 'Yes' && $subscription_status === 'Active') {
-                update_post_meta($subscription->get_id(), 'sumo_get_status', 'Pause'); // Pause the subscription
-                error_log("Subscription for user {$user_id} paused.");
-            } elseif ($meta_value === 'No' && $subscription_status === 'Pause') {
-                update_post_meta($subscription->get_id(), 'sumo_get_status', 'Active'); // Resume the subscription
-                error_log("Subscription for user {$user_id} resumed.");
-            }
-        } else {
-            error_log("No active subscription found for user {$user_id}");
-        }
-    }
-}
-
-// Function to retrieve the active SUMO subscription for a user
-function sumosubs_get_user_subscriptions($user_id) {
-    // Assuming that there is a function to get SUMO subscription for a user
-    $subscriptions = sumosubscriptions()->query->get(array(
-        'type'       => 'sumosubscriptions',
-        'status'     => 'publish',
-        'meta_key'   => 'sumo_get_user_id',
-        'meta_value' => $user_id,
-    ));
-
-    if (!empty($subscriptions)) {
-        return sumo_get_subscription(current($subscriptions)); // Return the first subscription found
-    }
-
-    return false;
-}
 
 // Hook into the status change of JetAppointment to detect "Completed" status.
 add_action('jet-form-builder/custom-action/deduct_balance_after_appointment', 'deduct_balance_after_appointment_handler', 10, 3);
@@ -297,3 +246,48 @@ function deduct_balance_after_appointment_handler($request, $action_handler) {
         throw new Exception('Invalid appointment cost or user data.');
     }
 }
+
+
+// Hook to listen for changes in user meta 'appointment_paused' and pause/resume subscription accordingly
+add_action('updated_user_meta', 'check_and_pause_sumo_subscription', 10, 4);
+
+function check_and_pause_sumo_subscription($meta_id, $user_id, $meta_key, $meta_value) {
+    if ($meta_key === 'appointment_paused') {
+        error_log("Meta updated for user {$user_id}, meta_key: {$meta_key}, meta_value: {$meta_value}");
+
+        // Assuming SUMO subscription integration
+        $subscription = get_user_sumo_subscription($user_id);
+        if ($subscription) {
+            // Get the current status from metadata
+            $subscription_status = get_post_meta($subscription->get_id(), 'sumo_get_status', true);
+
+            if ($meta_value === 'Yes' && $subscription_status === 'Active') {
+                update_post_meta($subscription->get_id(), 'sumo_get_status', 'Pause'); // Pause the subscription
+                error_log("Subscription for user {$user_id} paused.");
+            } elseif ($meta_value === 'No' && $subscription_status === 'Pause') {
+                update_post_meta($subscription->get_id(), 'sumo_get_status', 'Active'); // Resume the subscription
+                error_log("Subscription for user {$user_id} resumed.");
+            }
+        } else {
+            error_log("No active subscription found for user {$user_id}");
+        }
+    }
+}
+
+// Function to retrieve the active SUMO subscription for a user
+function sumosubs_get_user_subscriptions($user_id) {
+    // Assuming that there is a function to get SUMO subscription for a user
+    $subscriptions = sumosubscriptions()->query->get(array(
+        'type'       => 'sumosubscriptions',
+        'status'     => 'publish',
+        'meta_key'   => 'sumo_get_user_id',
+        'meta_value' => $user_id,
+    ));
+
+    if (!empty($subscriptions)) {
+        return sumo_get_subscription(current($subscriptions)); // Return the first subscription found
+    }
+
+    return false;
+}
+?>
