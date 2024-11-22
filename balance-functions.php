@@ -38,20 +38,52 @@ function get_user_balance($user_id) {
 }
 
 // Function to update the user's balance.
-function update_user_balance($user_id, $amount, $operation = 'add') {
-    $current_balance = get_user_balance($user_id);
+function update_user_balance($user_id, $amount, $action_type = 'set', $description = '') {
+    // Get the current balance
+    $current_balance = (float)get_user_meta($user_id, 'user_balance', true);
+    $new_balance = $current_balance;
 
-    if ($operation === 'add') {
-        $new_balance = $current_balance + $amount;
-    } elseif ($operation === 'subtract') {
-        $new_balance = max(0, $current_balance - $amount); // Balance cannot go below zero.
-    } else {
-        return false;
+    // Update balance based on action type
+    switch ($action_type) {
+        case 'set':
+            $new_balance = $amount;
+            break;
+        case 'add':
+            $new_balance += $amount;
+            break;
+        case 'subtract':
+            $new_balance -= $amount;
+            break;
     }
 
-    update_user_meta($user_id, 'user_balance', $new_balance);
-    return $new_balance;
+    // Only proceed if there's an actual change
+    if ($new_balance !== $current_balance) {
+        // Update the user balance
+        update_user_meta($user_id, 'user_balance', $new_balance);
+
+        // Log the change in the balance history
+        $balance_history = get_user_meta($user_id, 'balance_history', true);
+
+        if (!is_array($balance_history)) {
+            $balance_history = [];
+        }
+
+        // Format date for logging
+        $date = date('m/d/Y h:i A');
+
+        // Add the history entry
+        $balance_history[] = [
+            'date' => $date,
+            'type' => $action_type === 'set' ? 'Adjustment' : ($action_type === 'add' ? 'Credit' : 'Debit'),
+            'amount' => $amount,
+            'description' => empty($description) ? 'Balance adjusted' : $description,
+        ];
+
+        // Update the balance history meta field
+        update_user_meta($user_id, 'balance_history', $balance_history);
+    }
 }
+
 
 // Hook into user registration to initialize balance.
 add_action('user_register', 'initialize_user_balance');

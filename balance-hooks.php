@@ -161,14 +161,18 @@ function save_user_balance_field($user_id) {
         $old_balance = (float) get_user_meta($user_id, 'user_balance', true);
         $new_balance = (float) sanitize_text_field($_POST['user_balance']);
 
-        // Update user balance
-        update_user_meta($user_id, 'user_balance', $new_balance);
+        // Only proceed if there's an actual change in balance
+        if ($old_balance !== $new_balance) {
+            // Update user balance
+            update_user_meta($user_id, 'user_balance', $new_balance);
 
-        // Record balance adjustment in history
-        $adjustment_amount = $new_balance - $old_balance;
-        update_balance_history($user_id, 'adjustment', $adjustment_amount, 'Credit adjusted by Admin.');
+            // Record balance adjustment in history
+            $adjustment_amount = $new_balance - $old_balance;
+            update_balance_history($user_id, 'adjustment', $adjustment_amount, 'Credit adjusted by Admin.');
+        }
     }
 }
+
 add_action('personal_options_update', 'save_user_balance_field');
 add_action('edit_user_profile_update', 'save_user_balance_field');
 
