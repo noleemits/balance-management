@@ -4,7 +4,7 @@
 require_once get_stylesheet_directory() . '/balance-management/balance-hooks.php';
 require_once get_stylesheet_directory() . '/balance-management/balance-functions.php';
 require_once get_stylesheet_directory() . '/balance-management/subscription-management.php';
-require_once get_stylesheet_directory() . '/balance-management/weekly-cycle-check.php';
+require_once get_stylesheet_directory() . '/balance-management/subscription_balance_check.php';
 require_once get_stylesheet_directory() . '/balance-management/display-user-shortcode.php';
 require_once get_stylesheet_directory() . '/balance-management/balance-ajax.php';
 

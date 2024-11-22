@@ -1,6 +1,4 @@
 <?php
-
-// Function to retrieve provider-related user data
 // Function to retrieve provider-related user data
 function get_provider_data($related_user_id) {
     // Get basic user information
@@ -38,11 +36,15 @@ function get_user_subscription_details($user_id) {
     $subscription = sumosubs_get_user_subscriptions($user_id);
 
     if ($subscription) {
+        $subscription_id = $subscription->get_id();
+        $subscription_status = get_post_meta($subscription_id, 'sumo_get_status', true);
+        $next_payment_date = get_post_meta($subscription_id, 'sumo_get_next_payment_date', true);
+
         return [
-            'status' => get_post_meta($subscription->get_id(), 'sumo_get_status', true), // Correctly getting the status from metadata
-            'plan_type' => get_post_meta($subscription->get_id(), 'sumo_plan_type', true),
-            'subscription_id' => $subscription->get_id(),
-            'product' => sumo_display_subscription_name($subscription->get_id(), false, true)
+            'status' => $subscription_status,
+            'subscription_id' => $subscription_id,
+            'product' => preg_replace('/\s*\(#\d+\)$/', '', strip_tags(sumo_display_subscription_name($subscription_id, false, true))),
+            'next_payment_date' => $next_payment_date ? $next_payment_date : 'No upcoming payment',
         ];
     }
 
@@ -50,20 +52,23 @@ function get_user_subscription_details($user_id) {
 }
 
 
-// Function to get next renewal date based on subscription start date and renewal interval (weekly).
+// Function to get next renewal date based on SUMO subscription metadata.
 function get_next_cycle_date($user_id) {
-    $subscription_start_date = get_user_meta($user_id, 'subscription_start_date', true);
-    if (!$subscription_start_date) {
-        return 'No subscription start date found';
+    // Get the subscription details
+    $subscription_details = get_user_subscription_details($user_id);
+
+    if (is_array($subscription_details) && isset($subscription_details['next_payment_date'])) {
+        // Return the next payment date if available
+        if ($subscription_details['status'] === 'Paused') {
+            return 'Profile has been paused';
+        } else {
+            return date('F j, Y g:i a', strtotime($subscription_details['next_payment_date']));
+        }
     }
 
-    // Assuming weekly subscription cycle (7 days).
-    $start_timestamp = strtotime($subscription_start_date);
-    $next_cycle_timestamp = strtotime('+1 week', $start_timestamp);
-
-    // Format the next cycle date.
-    return date('m/d/Y h:i A', $next_cycle_timestamp);
+    return 'No subscription start date found';
 }
+
 
 // Helper function to update the user's balance history
 function update_balance_history($user_id, $type, $amount, $description) {
@@ -158,6 +163,7 @@ add_action('personal_options_update', 'save_user_balance_field');
 add_action('edit_user_profile_update', 'save_user_balance_field');
 
 // Add the balance field to the user profile page but make it non-editable
+// Add the balance field to the user profile page but make it non-editable
 function add_user_balance_field($user) {
     if (!current_user_can('edit_user', $user->ID)) {
         return;
@@ -172,6 +178,7 @@ function add_user_balance_field($user) {
             <td>
                 <input type="text" name="user_balance" id="user_balance" value="<?php echo esc_attr($user_balance); ?>" class="regular-text" readonly="readonly" />
                 <button type="button" id="enable-edit-balance" class="button">Edit Balance</button>
+                <button type="button" id="disable-edit-balance" class="button" style="display: none;">Disable Edit</button>
                 <p class="description">Click "Edit Balance" to modify the user's balance. Be careful with changes.</p>
             </td>
         </tr>
@@ -181,12 +188,22 @@ function add_user_balance_field($user) {
             var balanceField = document.getElementById('user_balance');
             balanceField.readOnly = false;
             balanceField.focus();
+            document.getElementById('enable-edit-balance').style.display = 'none';
+            document.getElementById('disable-edit-balance').style.display = 'inline';
+        });
+
+        document.getElementById('disable-edit-balance').addEventListener('click', function() {
+            var balanceField = document.getElementById('user_balance');
+            balanceField.readOnly = true;
+            document.getElementById('enable-edit-balance').style.display = 'inline';
+            document.getElementById('disable-edit-balance').style.display = 'none';
         });
     </script>
 <?php
 }
 add_action('show_user_profile', 'add_user_balance_field');
 add_action('edit_user_profile', 'add_user_balance_field');
+
 
 // Function to update user balance on order completion and record in balance history.
 function update_user_balance_on_order_completion($order_id) {
@@ -213,8 +230,6 @@ add_action('updated_user_meta', 'check_and_pause_sumo_subscription', 10, 4);
 
 function check_and_pause_sumo_subscription($meta_id, $user_id, $meta_key, $meta_value) {
     if ($meta_key === 'appointment_paused') {
-        error_log("Meta updated for user {$user_id}, meta_key: {$meta_key}, meta_value: {$meta_value}");
-
         // Get the SUMO subscription for the user
         $subscription = sumosubs_get_user_subscriptions($user_id);
 
@@ -224,13 +239,9 @@ function check_and_pause_sumo_subscription($meta_id, $user_id, $meta_key, $meta_
 
             if ($meta_value === 'Yes' && $subscription_status === 'Active') {
                 update_post_meta($subscription->get_id(), 'sumo_get_status', 'Pause'); // Pause the subscription
-                error_log("Subscription for user {$user_id} paused.");
             } elseif ($meta_value === 'No' && $subscription_status === 'Pause') {
                 update_post_meta($subscription->get_id(), 'sumo_get_status', 'Active'); // Resume the subscription
-                error_log("Subscription for user {$user_id} resumed.");
             }
-        } else {
-            error_log("No active subscription found for user {$user_id}");
         }
     }
 }

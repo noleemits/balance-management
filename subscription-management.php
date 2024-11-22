@@ -48,7 +48,6 @@ function handle_sumo_subscription_upgrade($order_id, $posted_data, $order) {
         if ($existing_subscription_id) {
             // Cancel the existing subscription.
             sumosubs_cancel_subscription($existing_subscription_id, array('note' => __('Subscription automatically cancelled upon new subscription.', 'sumosubscriptions')));
-            error_log("Cancelled subscription ID: {$existing_subscription_id} for user ID: {$user_id}");
         }
     }
 }
@@ -70,7 +69,6 @@ function deactivate_old_sumo_subscriptions($post_id, $order_id) {
                 if ($subscriber_id == $user_id && $status == 'Active') {
                     // Cancel the existing active subscription.
                     sumosubs_cancel_subscription($subscription_id, array('note' => __('Subscription automatically cancelled due to new subscription activation.', 'sumosubscriptions')));
-                    error_log("Deactivated old SUMO subscription ID: {$subscription_id} for user ID: {$user_id}");
                 }
             }
         }
