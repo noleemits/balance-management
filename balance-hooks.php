@@ -57,17 +57,27 @@ function get_next_cycle_date($user_id) {
     // Get the subscription details
     $subscription_details = get_user_subscription_details($user_id);
 
-    if (is_array($subscription_details) && isset($subscription_details['next_payment_date'])) {
+    if (is_array($subscription_details)) {
+        $status = isset($subscription_details['status']) ? strtolower($subscription_details['status']) : 'unknown'; // Convert status to lowercase
+        $next_payment_date = isset($subscription_details['next_payment_date']) ? $subscription_details['next_payment_date'] : null;
+
+        // Debug logging to confirm what values we are working with
+        error_log("Subscription details for user {$user_id}: Status - {$status}, Next Payment Date - {$next_payment_date}");
+
+        // Return message if subscription is paused
+        if ($status === 'paused' || $status === 'pause') {
+            return 'Refill is paused until subscription is resumed';
+        }
+
         // Return the next payment date if available
-        if ($subscription_details['status'] === 'Paused') {
-            return 'Profile has been paused';
-        } else {
-            return date('F j, Y g:i a', strtotime($subscription_details['next_payment_date']));
+        if ($next_payment_date) {
+            return date('F j, Y g:i a', strtotime($next_payment_date));
         }
     }
 
     return 'No subscription start date found';
 }
+
 
 
 // Helper function to update the user's balance history
