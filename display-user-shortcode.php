@@ -64,10 +64,16 @@ function get_provider_info() {
             // Use provider data function to get information
             $provider_data = get_provider_data($related_user_id);
             $next_cycle_date = get_next_cycle_date($related_user_id);
+            // Retrieve the phone number from user meta
+            $phone_number = get_user_meta($related_user_id, 'meta_billing_phone_number', true);
 
             // Start output
             $output = "<strong>Name:</strong> " . esc_html($provider_data['user_name']) . "<br>";
-            $output .= "<strong>Email:</strong> " . esc_html($provider_data['user_email']) . "<br>";
+            $output .= "<strong>Email:</strong><span class='provider-email'> " . esc_html($provider_data['user_email']) . "</span><br>";
+            // Add the phone number below the email address
+            if (!empty($phone_number)) {
+                $output .= "<strong>Phone Number:</strong><span class='provider-phone'>  " . esc_html($phone_number) . "</span><br>";
+            }
 
             // Profile image (if exists)
             if (!empty($provider_data['profile_image'])) {
@@ -90,9 +96,8 @@ function get_provider_info() {
 
             // Warning message if the balance is insufficient for the price entered
             $output .= "<div id='balance-warning-message' style='display: none;'>
-                        <p class='warning-text'>Warning: The user's balance is insufficient for the requested appointment price.</p>
-                        </div>";
-
+            <p class='warning-text'>Warning: The user's balance is insufficient for the requested appointment price.</p>" . do_shortcode('[jet_fb_form form_id="10288" submit_type="reload" required_mark="*" fields_layout="column" fields_label_tag="div" enable_progress="" clear=""]') . "
+            </div>";
             echo $output;
         } else {
             echo 'No user found with that email.';

@@ -1,0 +1,7 @@
+.user-balance-info ul {
+    max-width: 400px
+}
+
+.user-balance-info ul li {
+    margin: .85rem 0;
+}
