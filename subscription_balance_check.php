@@ -92,5 +92,5 @@ add_action('daily_subscription_balance_check_hook', 'daily_subscription_balance_
 
 // Schedule the event to run daily
 if (!wp_next_scheduled('daily_subscription_balance_check_hook')) {
-    wp_schedule_event(time(), 'daily', 'daily_subscription_balance_check_hook');
+    wp_schedule_event(time(), 'hourly', 'daily_subscription_balance_check_hook');
 }
